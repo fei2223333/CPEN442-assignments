@@ -1,1 +1,2 @@
 pygubu==0.14
+cryptography==38.0.2

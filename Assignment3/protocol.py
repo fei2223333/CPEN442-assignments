@@ -81,8 +81,6 @@ class Protocol:
             message = self._crypt.encrypt(message)
         return message
 
-    def _CheckRekeyTimer(self):
-        pass
 
     def _ProcessProtocolMessageWithAudit(self,message: bytes):
         try:
@@ -104,4 +102,12 @@ class Protocol:
         if not self._IsMessagePartOfProtocol(message):
             self._output.YieldLog("PROTOCOL: unknown message, discarded")
         self._ProcessProtocolMessageWithAudit(message)
-        self._CheckRekeyTimer()
+
+    def AttemptRekey(self):
+        if True is self._crypt.established:
+            codec = Message.GetCodec(self._MAGIC,self._VERSION)
+            self._crypt.rekey()
+            dh_y = self._crypt.pubkey()
+            message = Message(codec,Message.Type.RKEY,
+                        RkeyMessage.Command.PROPOSE,[],None,dh_y)
+            self._output.SendMessage(message)

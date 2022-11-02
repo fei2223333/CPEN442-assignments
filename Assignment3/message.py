@@ -167,7 +167,7 @@ class RkeyMessage(Message):
         crypt.rekey()
         dh_y = crypt.pubkey()
         message = Message(self.codec,Message.Type.RKEY,
-                          RkeyMessage.Command.CONFIRM,self.nonces,None,dh_y)
+                          RkeyMessage.Command.CONFIRM,[],None,dh_y)
         return message
 
     @staticmethod

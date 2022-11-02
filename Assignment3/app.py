@@ -3,6 +3,7 @@
 # system imports
 import pdb
 import sys
+import time
 import socket
 from threading import Thread
 import pygubu
@@ -84,6 +85,7 @@ class Assignment3VPN:
         # Server socket threads
         self.server_thread = Thread(target=self._AcceptConnections, daemon=True)
         self.receive_thread = Thread(target=self._ReceiveMessages, daemon=True)
+        self.timer_thread = Thread(target=self._RekeyTimer, daemon=True)
         
         # Creating a protocol object
         output_provider = self.AssembleOutputProvider(self._AppendMessage,self._AppendLog,self._SendMessage)
@@ -105,6 +107,8 @@ class Assignment3VPN:
             self.server_thread.terminate()
         if self.receive_thread.is_alive():
             self.receive_thread.terminate()
+        if self.timer_thread.is_alive():
+            self.timer_thread.terminate()
             
 
     # Handle client mode selection
@@ -176,6 +180,7 @@ class Assignment3VPN:
 
     # Receive data from the other party
     def _ReceiveMessages(self):
+        self.timer_thread.start()
         while True:
             try:
                 # Receiving all the data
@@ -192,6 +197,12 @@ class Assignment3VPN:
                 self._AppendLog("RECEIVER_THREAD: Error receiving data: {}".format(str(e)))
                 return False
 
+    def _RekeyTimer(self):
+        while True:
+            if not self.receive_thread.is_alive():
+                break
+            self.prtcl.AttemptRekey()
+            time.sleep(3600)
 
     # Send data to the other party
     def _SendMessage(self, message):
