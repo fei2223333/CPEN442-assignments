@@ -33,7 +33,7 @@ class Assignment3VPN:
 
     @classmethod
     def AssembleOutputProvider(cls,fmsg,flog,fsend):
-        fmsgWrapper = lambda f:(lambda y:f("Other: {}".format(y)))
+        fmsgWrapper = lambda f:(lambda y:f("Other: "+y))
         return cls.OutputProvider(fmsgWrapper(fmsg),flog,fsend)
     @classmethod
     def AssembleStateChangeProvider(cls,slist,flist,fkey):
@@ -219,7 +219,7 @@ class Assignment3VPN:
             try:
                 message = self.prtcl.EncapsulateTextMessage(text)
                 self._SendMessage(message)
-                self._AppendMessage("You: {}".format(text))
+                self._AppendMessage("You: "+text)
                 self.textMessage.set("")
             except Exception as e:
                 self._AppendLog("SENDING_MESSAGE: Error sending data: {}".format(str(e)))
