@@ -1,4 +1,7 @@
+#!/usr/bin/env python3
+
 # system imports
+import pdb
 import sys
 import socket
 from threading import Thread
@@ -12,6 +15,38 @@ from protocol import Protocol
 
 
 class Assignment3VPN:
+    class OutputProvider:
+        def __init__(self, fmsg, flog,fsend):
+            self.YieldMessage = fmsg
+            self.YieldLog = flog
+            self.SendMessage = fsend
+
+    class StateChangeProvider:
+        def __init__(self,succ,fail,fkey):
+            self.Success = succ
+            self.Fail = fail
+            self.GetKey = fkey
+
+        def Reset(self):
+            self.Success()
+            self.Fail()
+
+    @classmethod
+    def AssembleOutputProvider(cls,fmsg,flog,fsend):
+        fmsgWrapper = lambda f:(lambda y:f("Other: {}".format(y)))
+        return cls.OutputProvider(fmsgWrapper(fmsg),flog,fsend)
+    @classmethod
+    def AssembleStateChangeProvider(cls,slist,flist,fkey):
+        total = list(set(slist)|set(flist))
+        def OnSuccess():
+            for s in slist: s["state"] = "enable"
+            disable = list(set(total)-set(slist))
+            for s in disable: s["state"] = "disable"
+        def OnFail():
+            for s in flist: s["state"] = "enable"
+        return cls.StateChangeProvider(OnSuccess,OnFail,fkey)
+
+
     # Constructor
     def __init__(self, master=None):
         # Initializing UI
@@ -51,8 +86,14 @@ class Assignment3VPN:
         self.receive_thread = Thread(target=self._ReceiveMessages, daemon=True)
         
         # Creating a protocol object
-        self.prtcl = Protocol()
+        output_provider = self.AssembleOutputProvider(self._AppendMessage,self._AppendLog,self._SendMessage)
+        statechange_provider = self.AssembleStateChangeProvider([self.sendButton],
+                                    [self.sendButton,self.secureButton],self._get_key)
+        self.prtcl = Protocol(output_provider,statechange_provider)
      
+    def _get_key(self) -> str:
+        return self.sharedSecret.get()
+
     # Distructor     
     def __del__(self):
         # Closing the network socket
@@ -65,7 +106,7 @@ class Assignment3VPN:
         if self.receive_thread.is_alive():
             self.receive_thread.terminate()
             
-    
+
     # Handle client mode selection
     def ClientModeSelected(self):
         self.hostName.set("localhost")
@@ -74,7 +115,6 @@ class Assignment3VPN:
     # Handle sever mode selection
     def ServerModeSelected(self):
         pass
-
 
     # Create a TCP connection between the client and the server
     def CreateConnection(self):
@@ -96,7 +136,6 @@ class Assignment3VPN:
     def _CreateTCPConnection(self):
         if not self._ValidateConnectionInputs():
             return False
-        
         try:
             self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -135,32 +174,20 @@ class Assignment3VPN:
             self._AppendLog("SERVER: Accepting connection failed: {}".format(str(e)))
             return False
 
-
     # Receive data from the other party
     def _ReceiveMessages(self):
         while True:
             try:
                 # Receiving all the data
-                cipher_text = self.conn.recv(4096)
+                message = self.conn.recv(4096)
 
                 # Check if socket is still open
-                if cipher_text == None or len(cipher_text) == 0:
+                if message == None or len(message) == 0:
                     self._AppendLog("RECEIVER_THREAD: Received empty message")
                     break
-
-                # Checking if the received message is part of your protocol
-                # TODO: MODIFY THE INPUT ARGUMENTS AND LOGIC IF NECESSARY
-                if self.prtcl.IsMessagePartOfProtocol(cipher_text):
-                    # Disabling the button to prevent repeated clicks
-                    self.secureButton["state"] = "disabled"
-                    # Processing the protocol message
-                    self.prtcl.ProcessReceivedProtocolMessage(cipher_text)
-
-                # Otherwise, decrypting and showing the messaage
-                else:
-                    plain_text = self.prtcl.DecryptAndVerifyMessage(cipher_text)
-                    self._AppendMessage("Other: {}".format(plain_text.decode()))
-                    
+                self._AppendLog(f"RECEIVER_THREAD: Received message: {message.hex()}")
+                #pdb.set_trace()
+                self.prtcl.AcceptMessage(message)
             except Exception as e:
                 self._AppendLog("RECEIVER_THREAD: Error receiving data: {}".format(str(e)))
                 return False
@@ -168,18 +195,20 @@ class Assignment3VPN:
 
     # Send data to the other party
     def _SendMessage(self, message):
-        plain_text = message
-        cipher_text = self.prtcl.EncryptAndProtectMessage(plain_text)
-        self.conn.send(cipher_text.encode())
-            
+        data = message.codec.Encode(message)
+        committed = self.prtcl.CommitMessage(data)
+        self._AppendLog(f"RECEIVER_THREAD: Send message: {committed.hex()}")
+        self.conn.send(committed)
 
     # Secure connection with mutual authentication and key establishment
     def SecureConnection(self):
         # disable the button to prevent repeated clicks
         self.secureButton["state"] = "disabled"
+        self.sendButton["state"] = "disabled"
 
-        # TODO: THIS IS WHERE YOU SHOULD IMPLEMENT THE START OF YOUR MUTUAL AUTHENTICATION AND KEY ESTABLISHMENT PROTOCOL, MODIFY AS YOU SEEM FIT
-        init_message = self.prtcl.GetProtocolInitiationMessage()
+        key = self._get_key()
+        #pdb.set_trace()
+        init_message = self.prtcl.GetHandshakeInitiationMessage(key)
         self._SendMessage(init_message)
 
 
@@ -188,11 +217,13 @@ class Assignment3VPN:
         text = self.textMessage.get()
         if  text != "" and self.s is not None:
             try:
-                self._SendMessage(text)
+                message = self.prtcl.EncapsulateTextMessage(text)
+                self._SendMessage(message)
                 self._AppendMessage("You: {}".format(text))
                 self.textMessage.set("")
             except Exception as e:
                 self._AppendLog("SENDING_MESSAGE: Error sending data: {}".format(str(e)))
+                self._ChangeConnectionMode()
                 
         else:
             messagebox.showerror("Networking", "Either the message is empty or the connection is not established.")
