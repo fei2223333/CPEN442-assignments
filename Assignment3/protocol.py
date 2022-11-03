@@ -66,13 +66,19 @@ class Protocol:
         self._crypt.setremote(message.additional_data)
 
     def _ProcessTextMsg(self,message: Message):
+        if not self._crypt.established:
+            if not message.codec.CHECK_HMAC(self._crypt,message):
+                raise Exception("PROTOCOL: TEXT HMAC mismatch")
         text = message.additional_data.decode()
         self._output.YieldMessage(text)
 
     def EncapsulateTextMessage(self, payload: str) -> TextMessage:
         data = payload.encode()
         codec = Message.GetCodec(self._MAGIC,self._VERSION)
-        return TextMessage(codec,Message.Type.TEXT,TextMessage.Command.RESV,[],None,data)
+        message = TextMessage(codec,Message.Type.TEXT,TextMessage.Command.RESV,[],None,data)
+        if self._crypt.established is False:
+            message.hmac = codec.HMAC(self._crypt,message)
+        return message
 
     def CommitMessage(self, message: bytes) -> bytes:
         if self._crypt.established is None:
@@ -86,7 +92,7 @@ class Protocol:
         try:
             self._ProcessReceivedProtocolMessage(message)
         except Exception as e:
-            self._output.YieldLog("PROTOL: Secure channel establishment failed")
+            self._output.YieldLog("PROTOL: Secure channel establishment failed or invalid message")
             self._output.YieldLog(e)
             self._statechange.Fail()
 

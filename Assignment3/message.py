@@ -211,5 +211,6 @@ class TextMessage(Message):
         length = int.from_bytes(data[10:12],byteorder="big")
         if len(data)<pointer+length:
             raise Exception("Decode REKEY_PROPOSE: invalid packet length")
+        hmac = data[12:44]
         text = data[pointer:pointer+length]
-        return TextMessage(codec,Message.Type.TEXT,TextMessage.Command.RESV,[],None,text)
+        return TextMessage(codec,Message.Type.TEXT,TextMessage.Command.RESV,[],hmac,text)
